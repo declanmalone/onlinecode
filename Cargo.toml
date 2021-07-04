@@ -5,7 +5,7 @@ edition = "2018"
 description = "An implementation of \"Online Codes\", a type of Fountain Code"
 homepage = "https://github.com/declanmalone/onlinecode"
 categories = ["mathematics", "networking", "algorithms" ]
-keywords = ["networking", "fountain code", "algorithms", "erasure"]
+keywords = ["networking", "fountain" "code", "algorithms", "erasure"]
 license = "GPL-2.0-or-later OR LGPL-2.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
