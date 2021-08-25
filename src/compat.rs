@@ -12,7 +12,7 @@ use std::collections::HashSet;
 //
 
 pub struct AuxMapping {
-    aux_to_mblocks : Vec<Vec<usize>>
+    pub aux_to_mblocks : Vec<Vec<usize>>
 }
 
 impl AuxMapping {
