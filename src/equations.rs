@@ -103,7 +103,20 @@ pub struct Variable {
 // Auxiliary blocks are encoded as the first `ablocks` equations
 // entered into the system, but as the last `ablocks` *variables*.
 
-struct Decoder {
+pub enum EquationType {
+    AlreadySolved,
+    // Solved: single variable on lhs, expansion on rhs
+    Solved(VarID, Vec<VarID>),
+    // Unsolved: several variables on lhs, expansion on rhs
+    Unsolved(HashSet<VarID>, Vec<VarID>),
+};
+pub enum VariableType {
+    Solved(EqID),
+    Unsolved(HashSet<EqID>)
+}
+
+
+pub struct Decoder {
     mblocks : usize,		// message blocks
     ablocks : usize,		// auxiliary blocks
     coblocks: usize,		// mblocks + ablocks
@@ -111,8 +124,8 @@ struct Decoder {
     // These two arrays effectively implement the bipartite graph
     // logic
 
-    variables  : Vec<Variable>,	// left side is mblocks and ablocks
-    equations : Vec<Equation>,	// right side is what they expand to
+    variables : Vec<VariableType>,
+    equations : Vec<EquationType>,
 
     // maintain a list of variables that need visiting when an
     // equation becomes solved
@@ -128,6 +141,18 @@ struct Decoder {
     // optimisation, we can explicitly store the status here:
     // is_var_solved : Vec<bool>
 }
+
+// to-do
+//
+// at the cost of a little more space, we can use an enum to
+// distinguish between unsolved variables and solved ones.
+//
+// Something like:
+//
+// enum Variable {
+//   Solved(EqID),
+//   Unsolved(HashSet<EqID>)
+// }
 
 
 impl Decoder {
@@ -179,39 +204,174 @@ impl Decoder {
 
     }
 
-    // Add check block to graph. This is the main part of the decoder.
+
+    // Add check block to graph.
     fn add_check_equation(&mut self,
                           coblocks : Vec<VarID>,
-                          step : bool) {
+                          step : bool) -> (bool, Option<Vec<VarID>>) {
 
         let mut unknowns = coblocks.len();
         let mut equation = Equation {
                 lhs : HashSet::<VarID>::new(),
                 rhs : Vec::<VarID>::new(),
         };
+
+        // if we're already done, just return
+        if self.done { return (true, None) }
         
         // substitute all previously-solved variables into the
         // equation
+        let mut last_unsolved = 0;
         for var in coblocks.iter() {
 
-            let mut solved = false;
-            
-            // scan each equation that the variable appears in
+            // scan each equation that the variable appears in.
             let equations = &self.variables[*var].equations;
             for eq in equations.iter() {
                 if self.equations[*eq].lhs.len() == 1
                     && self.equations[*eq].lhs.contains(var) {
-                    solved = true;
-                    break;
-                }
-            }
-
-            if solved {
-                // do substitution (could be done above, actually)
-                unknowns -= 1;
+                        unknowns -= 1;
+                        equation.lhs.remove(var);
+                        equation.rhs.push(*var);
+                        break;
+                    } else {
+                        last_unsolved = *var;
+                    }
             }
         }
+
+        match unknowns {
+            0 => { (false, None) },
+            1 => {
+                // insert as newly-solved
+                let eq_position = self.equations.len();
+                self.equations.push(equation);
+                self.variables[last_unsolved].equations
+                    .insert(eq_position);
+
+                // search graph starting from newly solved variable
+                self.stack.push(last_unsolved);
+                // cascade will handle returning values
+                self.cascade(step)
+            },
+            _ => {
+                // insert as unsolved equation
+                let eq_position = self.equations.len();
+
+                // link unsolved variables to new equation
+                for var in equation.lhs.iter() { 
+                    self.variables[*var].equations
+                    .insert(eq_position);
+                }
+
+                // store the equation
+                self.equations.push(equation);
+                (false, None)
+            }
+        }
+
     }
+
+    // If a variable has been newly solved, it's possible that it now
+    // allows other equations to be solved.
+    //
+    // We follow from the variable to the equations that it appears
+    // in. First, we do substitution, which involves moving the
+    // variable from the lhs to the rhs of the equation. Then we break
+    // the link from the variable to the equation, since it is no
+    // longer an unknown variable.
+    //
+    // If in the process of updating an equation we find that the
+    // number of unknowns becomes 1, then the remaining variable on
+    // the lhs of the equation also becomes solved. We queue up that
+    // variable to have the above step repeated on it.
+    //
+    // This should work equally well for solved message blocks and
+    // auxiliary blocks.
+
+    fn cascade(&mut self, stepping : bool)
+               -> (bool, Option<Vec<VarID>>) {
+
+        let mut newly_solved = Vec::<VarID>::new();
+
+
+        while let var = self.stack.pop() {
+
+            //
+
+            if stepping { return (self.done, None) }
+
+        }
+
+        ( self.done, None )
+    }
+
+    // There's a back-and-forth between variables and equations:
+    //
+    // we detect that a new or existing equation only has one unknown
+    // on the lhs. That counts as solving the equation (and hence, a
+    // variable).
+    //
+    // A newly-solved variable is substituted into all equations that
+    // it appears in. This may cause one of those equation to become
+    // solved.
+
+    // There's also the case where a new check block equation comes in
+    // and it contains only a single unknown.
+
+    // I want to have a nice, clean division among the three pieces of
+    // code above.
+
+    // I was thinking of making an enum for solved/unsolved variables.
+    // It might also be a good idea to do the same for equations.
+
+    // think of it in terms of forward/back propagation...
+    //
+    // substituting a newly-solved variable into all equations it
+    // appears in is like forward propagation
+    //
+    // if that equation becomes solved, then propagating the new info
+    // deriving from it is kind of like back propagation (from
+    // equations to variables)
+
+    // on enum describing equation ... besides solved and unsolved, we
+    // also have a third class, which represents "no new information".
+    // These correspond to a number of unknowns of 0 (no new info), 1
+    // (solved) and >1 (unsolved) in the code to add a new check block
+    // equation. The case of 0 unknowns (over-specified/idempotent
+    // equations) *could* be passed back to the caller to allow them
+    // to verify that all the received check blocks are consistent
+    // with each other, although it's easiest to just drop them and
+    // assume that the sender is working correctly.
+
+    fn classify_equation(&self, vars : Vec<VarID>) -> EquationType {
+
+        // Use two passes. First determine how many unsolved vars
+        // there are. Then, depending on whether it's 0, 1 or more
+        // than 1, return different enum
+        
+        let mut count_unsolved = 0;
+        for var in vars.iter() {
+            // check to see if vars are solved
+            match self.variables[*var] {
+                VariableType::Solved(_)   => {},
+                VariableType::Unsolved(_) => {
+                    count_unsolved += 1;
+                    if count_unsolved > 1 { break }
+                }
+            }
+        }
+
+        match count_unsolved {
+
+            0 => { return EquationType::AlreadySolved },
+            _ => { return EquationType::AlreadySolved },
+        }
+        
+    }
+
 
 }
 
+// single-stepping
+//
+// 
