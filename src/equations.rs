@@ -109,12 +109,50 @@ pub enum EquationType {
     Solved(VarID, Vec<VarID>),
     // Unsolved: several variables on lhs, expansion on rhs
     Unsolved(HashSet<VarID>, Vec<VarID>),
-};
+}
 pub enum VariableType {
     Solved(EqID),
     Unsolved(HashSet<EqID>)
 }
 
+use std::iter::Iterator;
+
+impl EquationType {
+    fn iter(&self) -> impl Iterator<Item = &'_ VarID> {
+        match self {
+            Self::Unsolved(hash,_) => {
+                hash.iter()
+            },
+            _ => {
+                panic!("Can't insert into already-solved variable");
+            }
+            
+        }
+    }
+}
+
+impl VariableType {
+    fn insert(&mut self, var : VarID) {
+        match self {
+            Self::Solved(_) => {
+                panic!("Can't insert into already-solved variable");
+            },
+            Self::Unsolved(hash) => {
+                hash.insert(var);
+            }
+        }
+    }
+    fn iter(&self) -> impl Iterator<Item = &'_ EqID> {
+        match self {
+            Self::Solved(_) => {
+                panic!("Can't insert into already-solved variable");
+            },
+            Self::Unsolved(ref hash) => {
+                hash.iter()
+            }
+        }
+    }
+}
 
 pub struct Decoder {
     mblocks : usize,		// message blocks
@@ -170,9 +208,10 @@ impl Decoder {
 
         // set up Variable struct for each mblock, ablock
         for _ in 0..coblocks {
-            variables.push(Variable { 
-                equations : HashSet::<EqID>::new()
-            });
+            variables.push(
+                //    Variable { equations : HashSet::<EqID>::new() }
+                VariableType::Unsolved(HashSet::<EqID>::new())
+            );
         }
 
         let count_unsolveds = mblocks;
@@ -190,18 +229,24 @@ impl Decoder {
 
         for (ablock, list) in map.aux_to_mblocks.iter().enumerate() {
 
-            let mut equation = Equation {
-                lhs : HashSet::<VarID>::new(),
-                rhs : Vec::<VarID>::new(),
-            };
-            equation.lhs.insert(self.mblocks + ablock);
-            for mblock in list.iter() {
-                equation.lhs.insert(*mblock);
-                self.variables[*mblock].equations.insert(ablock);
-            }
-            self.equations.push(equation);
-        }
+            // let mut equation = Equation { }
+            let mut lhs = HashSet::<VarID>::new();
+            let mut rhs = Vec::<VarID>::new();
 
+            // note: the way that auxiliary blocks are generated means
+            // that it is possible (though unlikely) that one is
+            // generated with no links to any message blocks. Strictly
+            // speaking, we should be storing it as "solved" (with
+            // zero value), but since no variables refer to it anyway,
+            // it doesn't affect the algorithm in any way.
+            
+            lhs.insert(self.mblocks + ablock);
+            for mblock in list.iter() {
+                lhs.insert(*mblock);
+                self.variables[*mblock].insert(ablock);
+            }
+            self.equations.push(EquationType::Unsolved(lhs,rhs));
+        }
     }
 
 
@@ -210,57 +255,39 @@ impl Decoder {
                           coblocks : Vec<VarID>,
                           step : bool) -> (bool, Option<Vec<VarID>>) {
 
-        let mut unknowns = coblocks.len();
-        let mut equation = Equation {
-                lhs : HashSet::<VarID>::new(),
-                rhs : Vec::<VarID>::new(),
-        };
+        // let mut unknowns = coblocks.len();
+        // let mut equation = Equation {
+        //         lhs : HashSet::<VarID>::new(),
+        //         rhs : Vec::<VarID>::new(),
+        // };
 
         // if we're already done, just return
         if self.done { return (true, None) }
-        
+
         // substitute all previously-solved variables into the
         // equation
-        let mut last_unsolved = 0;
-        for var in coblocks.iter() {
+        let equation = self.new_equation(coblocks);
 
-            // scan each equation that the variable appears in.
-            let equations = &self.variables[*var].equations;
-            for eq in equations.iter() {
-                if self.equations[*eq].lhs.len() == 1
-                    && self.equations[*eq].lhs.contains(var) {
-                        unknowns -= 1;
-                        equation.lhs.remove(var);
-                        equation.rhs.push(*var);
-                        break;
-                    } else {
-                        last_unsolved = *var;
-                    }
-            }
-        }
-
-        match unknowns {
-            0 => { (false, None) },
-            1 => {
+        match equation {
+            EquationType::AlreadySolved => { (false, None) },
+            EquationType::Solved(var,_) => {
                 // insert as newly-solved
                 let eq_position = self.equations.len();
                 self.equations.push(equation);
-                self.variables[last_unsolved].equations
-                    .insert(eq_position);
+                self.variables[var].insert(eq_position);
 
                 // search graph starting from newly solved variable
-                self.stack.push(last_unsolved);
+                self.stack.push(var);
                 // cascade will handle returning values
                 self.cascade(step)
             },
-            _ => {
+            EquationType::Unsolved(ref hash,_) => {
                 // insert as unsolved equation
                 let eq_position = self.equations.len();
 
                 // link unsolved variables to new equation
-                for var in equation.lhs.iter() { 
-                    self.variables[*var].equations
-                    .insert(eq_position);
+                for var in equation.iter() { 
+                    self.variables[*var].insert(eq_position);
                 }
 
                 // store the equation
@@ -343,7 +370,23 @@ impl Decoder {
     // with each other, although it's easiest to just drop them and
     // assume that the sender is working correctly.
 
-    fn classify_equation(&self, vars : Vec<VarID>) -> EquationType {
+
+    /// Take a list of variables (block IDs) that comprise a check
+    /// block and substitute any already-solved ones in, returning
+    /// some kind of Option<EquationType> depending on the number of
+    /// unknowns:
+    ///
+    /// * 0 unknowns &rarr; None (already solved)
+    /// * 1 unknown &rarr; Some(Solved(VarID, Vec<VarID))
+    /// * 1+ unknowns &rarr; Some(Unsolved(HashSet<VarID>, Vec<VarID>))
+
+
+    // Hmm... might be better to get rid of already-solved enum type.
+    // They will never get stored in the graph, and is only needed to
+    // decide whether to drop a new check block. For that reason, I
+    // think I should return Option<EquationType> here instead
+    
+    fn new_equation(&self, vars : Vec<VarID>) -> Option<EquationType> {
 
         // Use two passes. First determine how many unsolved vars
         // there are. Then, depending on whether it's 0, 1 or more
@@ -363,14 +406,43 @@ impl Decoder {
 
         match count_unsolved {
 
-            0 => { return EquationType::AlreadySolved },
-            _ => { return EquationType::AlreadySolved },
+            0 => { return None },
+            1 => {
+                let mut single_unsolved = 0;
+                let mut rhs = Vec::new();
+                for var in vars.iter() {
+                    match self.variables[*var] {
+                        VariableType::Solved(_)   => {
+                            rhs.push(*var)
+                        },
+                        VariableType::Unsolved(_) => {
+                            single_unsolved = *var;
+                        }
+                    }
+                }
+                return EquationType::Solved(single_unsolved, rhs);
+            },
+            _ => {
+                let mut lhs = HashSet::new();
+                let mut rhs = Vec::new();
+                for var in vars.iter() {
+                    match self.variables[*var] {
+                        VariableType::Solved(_)   => {
+                            rhs.push(*var)
+                        },
+                        VariableType::Unsolved(_) => {
+                            lhs.insert(*var);
+                        }
+                    }
+                    
+                }
+                return EquationType::Unsolved(lhs,rhs)
+            }
         }
         
     }
-
-
 }
+    
 
 // single-stepping
 //
