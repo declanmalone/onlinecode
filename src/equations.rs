@@ -104,7 +104,8 @@ pub struct Variable {
 // entered into the system, but as the last `ablocks` *variables*.
 
 pub enum EquationType {
-    AlreadySolved,
+    // dropping AlreadySolved in favour of using Option<T>
+    // AlreadySolved,
     // Solved: single variable on lhs, expansion on rhs
     Solved(VarID, Vec<VarID>),
     // Unsolved: several variables on lhs, expansion on rhs
@@ -160,7 +161,7 @@ pub struct Decoder {
     coblocks: usize,		// mblocks + ablocks
 
     // These two arrays effectively implement the bipartite graph
-    // logic
+    // logic. Both types come in solved and unsolved flavours.
 
     variables : Vec<VariableType>,
     equations : Vec<EquationType>,
@@ -172,12 +173,6 @@ pub struct Decoder {
     // count only unsolved mblocks? That makes sense.
     count_unsolveds : usize,
     done : bool,
-
-    // We can determine if a variable is solved by looking at all
-    // linked equations, and if we find one that has only that
-    // variable on the left hand side, it is solved. As an
-    // optimisation, we can explicitly store the status here:
-    // is_var_solved : Vec<bool>
 }
 
 // to-do
@@ -268,8 +263,11 @@ impl Decoder {
         // equation
         let equation = self.new_equation(coblocks);
 
+        if equation.is_none() { return (false, None) }
+
+        let equation = equation.unwrap();
+
         match equation {
-            EquationType::AlreadySolved => { (false, None) },
             EquationType::Solved(var,_) => {
                 // insert as newly-solved
                 let eq_position = self.equations.len();
@@ -420,7 +418,7 @@ impl Decoder {
                         }
                     }
                 }
-                return EquationType::Solved(single_unsolved, rhs);
+                return Some(EquationType::Solved(single_unsolved, rhs))
             },
             _ => {
                 let mut lhs = HashSet::new();
@@ -436,7 +434,7 @@ impl Decoder {
                     }
                     
                 }
-                return EquationType::Unsolved(lhs,rhs)
+                return Some(EquationType::Unsolved(lhs,rhs))
             }
         }
         
