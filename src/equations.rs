@@ -276,7 +276,12 @@ impl Decoder {
 
                 // search graph starting from newly solved variable
                 self.stack.push(var);
-                // cascade will handle returning values
+
+                // At this point, we've added a solved *equation*, and
+                // linked the newly-solved variable to it. What
+                // cascade() does is to check if the variable can be
+                // substituted into other equations. It's responsible
+                // for marking the *variable* as solved afterwards.
                 self.cascade(step)
             },
             EquationType::Unsolved(ref hash,_) => {
@@ -316,18 +321,110 @@ impl Decoder {
     fn cascade(&mut self, stepping : bool)
                -> (bool, Option<Vec<VarID>>) {
 
+        // return list of newly-solved variables
         let mut newly_solved = Vec::<VarID>::new();
 
+        while let Some(var) = self.stack.pop() {
 
-        while let var = self.stack.pop() {
+            // var is always a solved variable at this point
+            newly_solved.push(var);
 
-            //
+            // we know that the variable is solved, but we don't know
+            // which equation solved it. After scanning the list of
+            // equations that the variable appears in, we should find
+            // exactly one equation that matches.
+            let mut found_solved = 0;
+            let mut solved_equation = 0;
 
-            if stepping { return (self.done, None) }
+            for eq_id in self.variables[var].iter() {
+                match &mut self.equations[*eq_id] {
+
+                    EquationType::Solved(v,rhs) => {
+                        debug_assert_eq!(*v, var);
+                        found_solved += 1;
+                        solved_equation = *eq_id;
+                    },
+                    EquationType::Unsolved(hash, rhs) => {
+                        // Need to do a little dance here. If the
+                        // equation would become solved, we need to
+                        // replace it with a ::Solved flavour. The
+                        // borrow checker will not be happy, though. I
+                        // may need to use an if let form instead of a
+                        // match.
+
+                        // Anyway, the gist is...
+                        //
+                        // if there are two entries in hash, delete
+                        // var from it, placing it into the rhs, and
+                        // use the remaining variable in the hash to
+                        // create a Solved EquationType (using
+                        // remaining variable and updated rhs). Also
+                        // add the remaining variable to the stack,
+                        // since it is now newly-solved. Then write
+                        // the new Solved flavour back to the table.
+                        //
+                        // or else ... remove var from hash and append
+                        // it to rhs
+
+                        match hash.len() {
+                            2 => {
+                                let mut vars = hash.iter();
+                                let mut other = vars.next().unwrap();
+                                if *other == var {
+                                    other = vars.next().unwrap()
+                                }
+                                rhs.push(var);
+                                self.stack.push(*other);
+                                // the contentious bit (I think to_vec() copies)
+                                self.equations[*eq_id] =
+                                    EquationType::Solved(*other,rhs.to_vec());
+                            },
+                            1 => {
+                                // This case shouldn't happen since
+                                // unsolved equation with a single
+                                // unknown should have been replaced
+                                // with a solved variant.
+                                panic!("Internal Error: Unsolved eq {} wrong",
+                                       eq_id);
+                            },
+                            _ => { 
+                                hash.remove(&var);
+                                rhs.push(var);
+                            }
+                        };
+                    }
+                }
+
+            } // for eq_id in self.variables.iter()
+
+            // variable also need to be marked as solved ...
+            debug_assert_eq!(found_solved, 1);
+            match &self.variables[var] {
+                VariableType::Solved(_eq_id) => {
+                    panic!("Internal error: var {} was solved twice", var);
+                },
+                VariableType::Unsolved(_hash) => {
+                    self.variables[var] = VariableType::Solved(solved_equation)
+                },
+            }
+
+            // update self's count of unsolved message blocks
+            if var < self.mblocks {
+                self.count_unsolveds -= 1;
+                if self.count_unsolveds == 0 {
+                    self.done = true;
+                    break;
+                }
+            }
+
+            // I should probably also be returning the number of items
+            // left in the stack if I want single-stepping to be
+            // useful.
+            if stepping { break }
 
         }
 
-        ( self.done, None )
+        ( self.done, Some(newly_solved) )
     }
 
     // There's a back-and-forth between variables and equations:
