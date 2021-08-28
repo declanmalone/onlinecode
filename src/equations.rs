@@ -121,9 +121,7 @@ use std::iter::Iterator;
 impl EquationType {
     fn iter(&self) -> impl Iterator<Item = &'_ VarID> {
         match self {
-            Self::Unsolved(hash,_) => {
-                hash.iter()
-            },
+            Self::Unsolved(hash,_) => { hash.iter() },
             _ => {
                 panic!("Can't insert into already-solved variable");
             }
@@ -240,6 +238,9 @@ impl Decoder {
                 lhs.insert(*mblock);
                 self.variables[*mblock].insert(ablock);
             }
+            // link aux variable to equation
+            self.variables[self.mblocks + ablock].insert(ablock);
+            // store the equation
             self.equations.push(EquationType::Unsolved(lhs,rhs));
         }
     }
@@ -543,6 +544,11 @@ impl Decoder {
         }
         
     }
+
+    fn var_solution(&self, var : VarID)
+                    -> Option<(Option<EqID>, Vec<EqID>)> {
+
+    }
 }
     
 
@@ -635,10 +641,11 @@ mod test_decoder {
 
     // make sure that solving via auxiliary blocks works as expected
     //
-    // Setup:
+    // Setup (4 cases):
     //
     // let aux_0 = msg_0
     // let chk_0 = (msg_0 or aux_0) + msg_1
+    // let chk_1 = (msg_0 or aux_0)
     //
     // If we receive a new check block solving either aux_0 or msg_0
     // we should be able to solve msg_1.
@@ -650,8 +657,8 @@ mod test_decoder {
     // chk_1 = msg_0
     //    
     // Doesn't use aux for solution (so it's like two unknowns test as
-    // above), but does check that array indices in solutions are
-    // correct after adding a call to add_aux_equations().
+    // above), but does check that add_aux_equations() works correctly
+    // and that array indices in solutions are still correct.
     #[test]
     fn solve_via_aux_case_1() {
 
@@ -674,6 +681,7 @@ mod test_decoder {
                         assert_eq!(hash.len(), 2);
                         assert!(hash.contains(&0)); // msg0
                         assert!(hash.contains(&2)); // aux0
+                        assert_eq!(vec.len(), 0);   // rhs empty
                     },
                     _ => { panic!("aux0 equation wrongly set as solved")
                     }
@@ -690,18 +698,44 @@ mod test_decoder {
         match &d.variables[2] {
             VariableType::Unsolved(hash) => {
                 assert_eq!(hash.len(), 1);
-                assert!(hash.contains(&0)); // eq0 = aux0
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                // contents of equation already checked above
             },
             _ => { panic!("aux0 wrongly set as solved") }
         }
 
+        // add chk0 = msg0 + msg1
         let (done,pending,solved)
             = d.add_check_equation(vec![0usize,1], false);
-
         assert_eq!(done, false); // nothing solved
         assert_eq!(pending, 0); // cascade didn't solve extra
         assert!(solved.is_none()); // None instead of Some(Vec)
 
+        // add chk1 = msg0
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize], false);
+        assert_eq!(done, true); // all solved
+        assert_eq!(pending, 1); // aux should be pending
+        assert!(!solved.is_none()); // Some(Vec)
+
+        let solved = solved.unwrap();
+
+        // order of solutions should be msg0, msg1
+        assert_eq!(solved, [0,1]);
+
+        // check contents of solved variables ...
+        //
+        // There's a fair bit of boilerplate code involved in
+        // following variables to equations and then destructuring
+        // things. I'll add a new function to help with that...
+        let (initial_block, rhs) = d.var_solution(0).unwrap();
+
+        // if we were xoring here, we'd:
+
+        // * test whether initial_block = Some(block) and use that as
+        //   our initial value (else start with zero block)
+        // * xor every block mentioned in rhs into the block
+        
     }
 
     
