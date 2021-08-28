@@ -546,8 +546,55 @@ impl Decoder {
     }
 
     fn var_solution(&self, var : VarID)
-                    -> Option<(Option<EqID>, Vec<EqID>)> {
+                    -> Option<(Option<usize>, Vec<EqID>)> {
 
+        // actually ... we don't need initial, do we? Isn't the
+        // expansion for the variable completely on the RHS of the
+        // equation? No, it's not...
+        
+        // var -> eq, and eq contains rhs (and a copy of var)
+        //
+        // if eq < ablocks, it represents an auxiliary block, so the
+        // initial block should be zero/not-present
+        //
+        // if eq >= ablocks, then it has an implicitly associated
+        // check block, which is eq - ablocks
+
+        // Or should I be checking whether var < mblocks instead?
+        // No, I should test eq < ablocks.
+        //
+        // Variables in general can be solved by auxiliary equations
+        // or check equations, so we look at the equation number, not
+        // the variable number to determine the correct expansion.
+
+        let mut initial = None;
+        
+        match self.variables[var] {
+            VariableType::Solved(eq_id) => {
+                
+                // if var < self.mblocks {
+                //     initial = Some(eq_id);
+                // }
+                match &self.equations[eq_id] {
+                    EquationType::Solved(lhs,rhs) => {
+                        debug_assert_eq!(*lhs, var); // internal error
+                        let mut vec = Vec::new();
+                        if eq_id >= self.ablocks {
+                            // variable solved by check block
+                            // vec.push(eq_id - self.ablocks);
+                            initial = Some(eq_id - self.ablocks);
+                        }
+                        vec.extend(rhs.to_vec());
+                        Some((initial, vec))
+                    },
+                    _ => {
+                        // caller error
+                        panic!("eq[{}] not marked as solved", eq_id)
+                    }
+                }
+            },
+            _ => { None }
+        }
     }
 }
     
@@ -659,7 +706,7 @@ mod test_decoder {
     // Doesn't use aux for solution (so it's like two unknowns test as
     // above), but does check that add_aux_equations() works correctly
     // and that array indices in solutions are still correct.
-    #[test]
+    // #[test]
     fn solve_via_aux_case_1() {
 
         // system with two unknown message blocks (0, 1) and one aux
@@ -715,9 +762,17 @@ mod test_decoder {
         let (done,pending,solved)
             = d.add_check_equation(vec![0usize], false);
         assert_eq!(done, true); // all solved
-        assert_eq!(pending, 1); // aux should be pending
-        assert!(!solved.is_none()); // Some(Vec)
 
+        // Unfortunately, HashSet::iter() returns keys in
+        // nondeterministic order, so testing is not so
+        // straightforward. 
+        
+        assert_eq!(pending, 1); // aux should be pending?
+        // Actually, it depends on how hash keys are traversed. The
+        // order of keys from iterating HashMap/HashSet seems to be
+        // non-deterministic.
+
+        assert!(!solved.is_none()); // Some(Vec)
         let solved = solved.unwrap();
 
         // order of solutions should be msg0, msg1
@@ -727,16 +782,356 @@ mod test_decoder {
         //
         // There's a fair bit of boilerplate code involved in
         // following variables to equations and then destructuring
-        // things. I'll add a new function to help with that...
-        let (initial_block, rhs) = d.var_solution(0).unwrap();
+        // things. I'll add a new method to help with that...
 
-        // if we were xoring here, we'd:
+        // the method needs to return an optional equation number,
+        // which corresponds to Some(received check block) or None in
+        // the case that 
+        
+        let rhs = d.var_solution(0).unwrap();
 
-        // * test whether initial_block = Some(block) and use that as
-        //   our initial value (else start with zero block)
-        // * xor every block mentioned in rhs into the block
+        // Some(1) means check block 1
+        // the empty vector means no solved variables to xor in
+        assert_eq!(rhs, (Some(1),vec![]));
         
     }
 
+    // Rewrite test cases above to eliminate nondeterminism
+    //
+    // Forget about msg1 completely
+    //
+    // R1: (aux) aux0 = msg0
+    // R2a: chk0 = aux0
+    // R2b: chk0 = msg0
+
+    #[test]
+    fn deterministic_aux_case_1() {
+
+        // system with one unknown message blocks 0 and one aux
+        let mut d = Decoder::new(1,1);
+
+        // first, add auxiliary mapping (aux -*-> msg)
+        let aux_map = AuxMapping { aux_to_mblocks : vec![vec![0]] };
+        d.add_aux_equations(&aux_map);
+
+        // Test that system is set up as expected. We shouldn't need
+        // to repeat this part of the testing for other cases.
+
+        match &d.variables[0] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                match &d.equations[0] {
+                    EquationType::Unsolved(hash, vec) => {
+                        assert_eq!(hash.len(), 2);
+                        assert!(hash.contains(&0)); // msg0
+                        assert!(hash.contains(&1)); // aux0
+                        assert_eq!(vec.len(), 0);   // rhs empty
+                    },
+                    _ => { panic!("aux0 equation wrongly set as solved")
+                    }
+                }
+            },
+            _ => { panic!("msg0 wrongly set as solved") }
+        }
+        match &d.variables[1] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                // contents of equation already checked above
+            },
+            _ => { panic!("aux0 wrongly set as solved") }
+        }
+
+        // add chk0 = aux0
+        let (done,pending,solved)
+            = d.add_check_equation(vec![1usize], false);
+        assert_eq!(done, true); // everything solved
+        assert_eq!(pending, 0); // cascade didn't solve extra
+        assert!(!solved.is_none()); // Some(Vec)
+
+        let solved = solved.unwrap();
+
+        // order of solutions should be aux0, msg0
+        assert_eq!(solved, [1,0]);
+
+        // test solution of aux block first (values in the returned
+        // array are all check block IDs)
+        let rhs = d.var_solution(1).unwrap();
+
+        assert_eq!(rhs, [0]); // = chk0
+
+        // using the above, we can set chk1 (ie, aux0) = chk0
+
+        // That then tallies with the solution msg1 = chk1 (=chk0)
+        let rhs = d.var_solution(0).unwrap();
+
+        assert_eq!(rhs, [1]);
+        
+    }
     
+    #[test]
+    fn deterministic_aux_case_2() {
+
+        // system with one unknown message blocks 0 and one aux
+        let mut d = Decoder::new(1,1);
+
+        // first, add auxiliary mapping (aux -*-> msg)
+        let aux_map = AuxMapping { aux_to_mblocks : vec![vec![0]] };
+        d.add_aux_equations(&aux_map);
+
+        // Test that system is set up as expected. We shouldn't need
+        // to repeat this part of the testing for other cases.
+
+        match &d.variables[0] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                match &d.equations[0] {
+                    EquationType::Unsolved(hash, vec) => {
+                        assert_eq!(hash.len(), 2);
+                        assert!(hash.contains(&0)); // msg0
+                        assert!(hash.contains(&1)); // aux0
+                        assert_eq!(vec.len(), 0);   // rhs empty
+                    },
+                    _ => { panic!("aux0 equation wrongly set as solved")
+                    }
+                }
+            },
+            _ => { panic!("msg0 wrongly set as solved") }
+        }
+        match &d.variables[1] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                // contents of equation already checked above
+            },
+            _ => { panic!("aux0 wrongly set as solved") }
+        }
+
+        // add chk0 = msg0
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize], false);
+        assert_eq!(done, true); // everything solved
+        assert_eq!(pending, 1); // cascade detected done, w/o solving aux
+        assert!(!solved.is_none()); // Some(Vec)
+
+        let solved = solved.unwrap();
+
+        // order of solutions should be msg0
+        assert_eq!(solved, [0]);
+
+        // test solution of aux block first (values in the returned
+        // array are all check block IDs)
+        let rhs = d.var_solution(0).unwrap();
+
+        assert_eq!(rhs, [0]); // = chk0
+        
+    }
+    
+    // The first deterministic case above showed an aux block solving
+    // a msg block, but because of how `done` is handled, the second
+    // case didn't fully show what happens then a msg block gets
+    // solved first. Extend that by adding in a second, unrelated
+    // message block.
+    
+    #[test]
+    fn deterministic_aux_case_3() {
+
+        // system with one unknown message blocks 0 and one aux
+        let mut d = Decoder::new(2,1);
+
+        // first, add auxiliary mapping (aux -*-> msg)
+        let aux_map = AuxMapping { aux_to_mblocks : vec![vec![0]] };
+        d.add_aux_equations(&aux_map);
+
+        // Test that system is set up as expected. We shouldn't need
+        // to repeat this part of the testing for other cases.
+
+        match &d.variables[0] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                match &d.equations[0] {
+                    EquationType::Unsolved(hash, vec) => {
+                        assert_eq!(hash.len(), 2);
+                        assert!(hash.contains(&0)); // msg0
+                        assert!(hash.contains(&2)); // aux0
+                        assert_eq!(vec.len(), 0);   // rhs empty
+                    },
+                    _ => { panic!("aux0 equation wrongly set as solved")
+                    }
+                }
+            },
+            _ => { panic!("msg0 wrongly set as solved") }
+        }
+        // check aux block
+        match &d.variables[2] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                // contents of equation already checked above
+            },
+            _ => { panic!("aux0 wrongly set as solved") }
+        }
+
+        // add chk0 = msg0
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize], false);
+        assert_eq!(done, false); // msg1 not solved yet
+        assert_eq!(pending, 0); // cascade doesn't do done
+        assert!(!solved.is_none()); // Some(Vec)
+
+        let solved = solved.unwrap();
+
+        // order of solutions should be msg0,aux0
+        assert_eq!(solved, [0,2]);
+
+        // test solution of aux block first (values in the returned
+        // array are all check block IDs)
+        let rhs = d.var_solution(0).unwrap();
+
+        assert_eq!(rhs, [0]); // = chk0
+
+        // aux0 should be solved by msg0
+        let rhs = d.var_solution(2).unwrap();
+
+        assert_eq!(rhs, [0]); // = chk0
+        
+    }
+
+
+    // Random testing
+    //
+    // The Online Code algorithm specifies a particular construction
+    // of auxiliary blocks and check blocks. However, we can simplify
+    // that for the purposes of random testing on the decoder. It will
+    // take longer to fully decode the original message, but it should
+    // terminate at some point.
+    //
+    // There are two things to test in this mode:
+    //
+    // * that new solutions are composed only of already-solved
+    //   variables; and
+    //
+    // * when we do the XORs that the decoder tells us to do, we
+    //   actually recover the correct values
+    //
+    // If this fails, it probably won't be easy to find out why it
+    // failed, and it won't be possible to reproduce the error. On the
+    // other hand, if it succeeds, we can have very high confidence
+    // that the decoder is bug-free.
+
+    // Will need some support routines which can be considered toy
+    // versions of the proper Online Code algorithm
+
+    use rand::{Rng,thread_rng};
+
+    fn random_message(size : usize) -> Vec<usize> {
+        let mut rng = thread_rng();
+        let mut vec = Vec::with_capacity(size);
+        for _ in 0..size {
+            vec.push(rng.gen())
+        }
+        vec
+    }
+
+    use crate::floyd::*;
+
+    fn generate_check_block(max_picks : usize, from : usize)
+                            -> HashSet<usize> {
+
+        let mut rng = thread_rng();
+        let how_many = rng.gen_range(1..max_picks + 1);
+        assert!(how_many > 0);
+        assert!(how_many <= max_picks);
+
+        floyd_usize(&mut rng, how_many, from)
+    }
+
+    fn hashset_to_vec(set : &HashSet<usize>) -> Vec<usize> {
+        set.iter().cloned().collect::<Vec<_>>()
+    }
+
+    // ablocks each comprising a random selection of `m_per_a` mblocks
+    fn toy_aux_mapping(mblocks : usize, ablocks : usize, m_per_a : usize)
+                       -> Vec<Vec<usize>> {
+
+        let mut rng = thread_rng();
+        let mut vec = Vec::with_capacity(ablocks);
+        for _ in 0..ablocks {
+            let aux_map = floyd_usize(&mut rng, m_per_a, mblocks);
+            vec.push(hashset_to_vec(&aux_map))
+        }
+        vec
+    }
+
+    fn test_toy_codec() {
+
+        let mblocks = 75;
+        let ablocks = 25;
+        let m_per_a = 6;
+        let max_picks = 8;      // max blocks to put in check block
+
+        // coding side
+        //
+        let mut message = random_message(mblocks);
+
+        // aux blocks stored at the end of message
+        // let aux_blocks = Vec::with_capacity(ablocks);
+
+        // check_blocks can be shared between coder and decoder
+        let check_blocks = Vec::<usize>::with_capacity(200);
+
+        let aux_mapping = toy_aux_mapping(mblocks, ablocks, m_per_a);
+
+        // calculate aux blocks and append them to message for easier
+        // check block creation
+        for aux_list in aux_mapping {
+            let mut sum = 0usize;
+            for mblock in aux_list {
+                sum ^= mblock;
+            }
+            message.push(sum);
+        }
+
+        // decoding side
+        let mut d = Decoder::new(mblocks, ablocks);
+        d.add_aux_equations(& AuxMapping { aux_to_mblocks : aux_mapping });
+
+        // validate ordering of solutions
+        let mut solvedp = vec![false ; mblocks + ablocks];
+
+        while !d.done {
+
+            let check_vec = hashset_to_vec(
+                &generate_check_block(max_picks, mblocks + ablocks));
+            let mut check_val = 0;
+            for index in check_vec.iter() {
+                check_val ^= message[*index]
+            }
+
+            check_blocks.push(check_val);
+
+            let (done, pending, solved) =
+                d.add_check_equation(check_vec, false);
+
+            if solved.is_none() { continue }
+
+            let solved = solved.unwrap();
+
+            for var in solved.iter() {
+                rhs = d.var_solution(*var);
+                let mut sum = 0;
+                for chk in rhs.iter() {
+                    // damn... these are not check blocks only the
+                    // first one is. I have to rewrite var_solution
+                    sum ^= *chk;
+                }
+
+                // 
+            }
+
+        }
+    }
 }
