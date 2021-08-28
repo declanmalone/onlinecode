@@ -859,14 +859,14 @@ mod test_decoder {
         // array are all check block IDs)
         let rhs = d.var_solution(1).unwrap();
 
-        assert_eq!(rhs, [0]); // = chk0
+        assert_eq!(rhs, (Some(0), vec![])); // = chk0
 
         // using the above, we can set chk1 (ie, aux0) = chk0
 
         // That then tallies with the solution msg1 = chk1 (=chk0)
         let rhs = d.var_solution(0).unwrap();
 
-        assert_eq!(rhs, [1]);
+        assert_eq!(rhs, (None, vec![1]));
         
     }
     
@@ -925,7 +925,7 @@ mod test_decoder {
         // array are all check block IDs)
         let rhs = d.var_solution(0).unwrap();
 
-        assert_eq!(rhs, [0]); // = chk0
+        assert_eq!(rhs,(Some(0), vec![])); // = chk0
         
     }
     
@@ -991,12 +991,12 @@ mod test_decoder {
         // array are all check block IDs)
         let rhs = d.var_solution(0).unwrap();
 
-        assert_eq!(rhs, [0]); // = chk0
+        assert_eq!(rhs, (Some(0), vec![]) ); // = chk0
 
         // aux0 should be solved by msg0
         let rhs = d.var_solution(2).unwrap();
 
-        assert_eq!(rhs, [0]); // = chk0
+        assert_eq!(rhs, (None, vec![0])); // = chk0
         
     }
 
@@ -1081,13 +1081,13 @@ mod test_decoder {
         // let aux_blocks = Vec::with_capacity(ablocks);
 
         // check_blocks can be shared between coder and decoder
-        let check_blocks = Vec::<usize>::with_capacity(200);
+        let mut check_blocks = Vec::<usize>::with_capacity(200);
 
         let aux_mapping = toy_aux_mapping(mblocks, ablocks, m_per_a);
 
         // calculate aux blocks and append them to message for easier
         // check block creation
-        for aux_list in aux_mapping {
+        for aux_list in aux_mapping.iter() {
             let mut sum = 0usize;
             for mblock in aux_list {
                 sum ^= mblock;
@@ -1121,12 +1121,16 @@ mod test_decoder {
             let solved = solved.unwrap();
 
             for var in solved.iter() {
-                rhs = d.var_solution(*var);
-                let mut sum = 0;
-                for chk in rhs.iter() {
+                let (chk, vars) = d.var_solution(*var).unwrap();
+                let mut sum = match chk {
+                    None => 0,
+                    Some(x) => x
+                };
+
+                for var in vars.iter() {
                     // damn... these are not check blocks only the
                     // first one is. I have to rewrite var_solution
-                    sum ^= *chk;
+                    sum ^= *var;
                 }
 
                 // 
