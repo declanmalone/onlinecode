@@ -1120,14 +1120,31 @@ mod test_decoder {
             eprintln!("Check block {} comprising: {:?}, value {}",
                       check_blocks.len(), check_vec,  check_val);
 
-            check_blocks.push(check_val);
+            // sender and receiver can end up disagreeing on what the
+            // current check block number is if the receiver drops the
+            // block because it provides no new info. To fix this,
+            // I'll restrict changes to just the codec code here...
+
+            let mut useless = true;
+            for maybe_known in check_vec.iter() {
+                if !solvedp[*maybe_known] {
+                    useless = false;
+                    break;
+                }
+            }
+            if useless {
+                eprintln!("Not storing a useless block");
+                continue
+            } else {
+                check_blocks.push(check_val);
+            }
 
             let (done, pending, solved) =
                 d.add_check_equation(check_vec, false);
 
             if solved.is_none() {
-                // this seems to be the fix for the bug...
-                check_blocks.pop();
+                // see above for proper fix for "useless" check blocks
+                // check_blocks.pop();
                 continue
             }
 
