@@ -245,10 +245,10 @@ impl Decoder {
     }
 
 
-    // Add check block to graph.
+    /// Add check block to graph. 
     fn add_check_equation(&mut self,
-                          coblocks : Vec<VarID>,
-                          step : bool) -> (bool, Option<Vec<VarID>>) {
+                          coblocks : Vec<VarID>, step : bool)
+                          -> (bool, usize, Option<Vec<VarID>>) {
 
         // let mut unknowns = coblocks.len();
         // let mut equation = Equation {
@@ -257,13 +257,13 @@ impl Decoder {
         // };
 
         // if we're already done, just return
-        if self.done { return (true, None) }
+        if self.done { return (true, self.stack.len(), None) }
 
         // substitute all previously-solved variables into the
         // equation
         let equation = self.new_equation(coblocks);
 
-        if equation.is_none() { return (false, None) }
+        if equation.is_none() { return (false, self.stack.len(), None) }
 
         let equation = equation.unwrap();
 
@@ -295,7 +295,7 @@ impl Decoder {
 
                 // store the equation
                 self.equations.push(equation);
-                (false, None)
+                (false, self.stack.len(), None)
             }
         }
 
@@ -319,7 +319,7 @@ impl Decoder {
     // auxiliary blocks.
 
     fn cascade(&mut self, stepping : bool)
-               -> (bool, Option<Vec<VarID>>) {
+               -> (bool, usize, Option<Vec<VarID>>) {
 
         // return list of newly-solved variables
         let mut newly_solved = Vec::<VarID>::new();
@@ -420,11 +420,18 @@ impl Decoder {
             // I should probably also be returning the number of items
             // left in the stack if I want single-stepping to be
             // useful.
+            //
+            // When single-stepping, call add_check_equation() once
+            // with the stepping option = true. Then while the second
+            // return value (the number of variables pending) is >0,
+            // call cascade(). This should solve equations/variables
+            // in the same order as a non-stepping call to
+            // add_check_equation().
             if stepping { break }
 
         }
 
-        ( self.done, Some(newly_solved) )
+        ( self.done, self.stack.len(), Some(newly_solved) )
     }
 
     // There's a back-and-forth between variables and equations:
@@ -539,6 +546,91 @@ impl Decoder {
 }
     
 
-// single-stepping
-//
-// 
+#[cfg(test)]
+mod test_decoder {
+
+    use super::*;
+
+    #[test]
+    fn single_unknown_no_aux() {
+        let mut d = Decoder::new(1,0);
+        // check block with a single unknown
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize], false);
+
+        assert_eq!(done, true); // last block was solved
+        assert_eq!(pending, 0); // cascade didn't solve extra
+        assert_eq!(solved.is_none(), false); // got Some(Vec)
+
+        // unwrap the vector of solved vars and ensure 0 is the only
+        // item in it
+        let solved = solved.unwrap();
+        assert_eq!(solved[0], 0);
+        assert_eq!(solved.len(), 1);
+    }
+    
+    #[test]
+    fn two_unknowns_no_aux_no_step() {
+        let mut d = Decoder::new(2,0);
+        // check block with two unknowns (blocks 0, 1)
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize,1], false);
+
+        assert_eq!(done, false); // nothing solved
+        assert_eq!(pending, 0); // cascade didn't solve extra
+        assert!(solved.is_none()); // None instead of Some(Vec)
+
+        // a check block with either 0 or 1 by itself should
+        // solve both due to cascade.
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize], false);
+
+        assert_eq!(done, true); // all solved
+        assert_eq!(pending, 0); // nothing left in pending
+        assert!(!solved.is_none()); // Some(Vec)
+
+        // unwrap the vector of solved vars. It should have [0,1] in
+        // that order
+
+        let solved = solved.unwrap();
+        assert_eq!(solved, [0,1]);
+        // assert_eq!(solved.len(), 2);
+
+        // confirm that solutions are actually correct
+        // var[0] -> eq[1], containing (1, empty vec)
+        // (interpretation: var_0 = check_block_1, no other xors)
+
+        match d.variables[0] {
+            VariableType::Solved(var0_eq) => {
+                assert_eq!(var0_eq, 1);
+                match &d.equations[var0_eq] {
+                    EquationType::Solved(lhs,rhs) => {
+                        assert_eq!(*lhs, 0); // solves variable 0
+                        assert_eq!(*rhs, vec![]);
+                    },
+                    _ => { panic!("eq[1] not marked as solved") }
+                }
+            },
+            _ => { panic!("var[0] not marked as solved") }
+        }
+
+        // var[1] -> eq[0], containing (0, vec![0])
+        // (interpretation: var_1 = check_block_0 xor var_0)
+
+        match d.variables[1] {
+            VariableType::Solved(var1_eq) => {
+                assert_eq!(var1_eq, 0);
+                match &d.equations[var1_eq] {
+                    EquationType::Solved(lhs,rhs) => {
+                        assert_eq!(*lhs, 1); // solves variable 1
+                        assert_eq!(*rhs, vec![0]);
+                    },
+                    _ => { panic!("eq[0] not marked as solved") }
+                }
+            },
+            _ => { panic!("var[1] not marked as solved") }
+        }
+    }
+
+    
+}
