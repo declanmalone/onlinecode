@@ -632,5 +632,77 @@ mod test_decoder {
         }
     }
 
+
+    // make sure that solving via auxiliary blocks works as expected
+    //
+    // Setup:
+    //
+    // let aux_0 = msg_0
+    // let chk_0 = (msg_0 or aux_0) + msg_1
+    //
+    // If we receive a new check block solving either aux_0 or msg_0
+    // we should be able to solve msg_1.
+    //
+    // Code these as separate tests
+
+    // Case 1:
+    // chk_0 = msg_0 + msg_1
+    // chk_1 = msg_0
+    //    
+    // Doesn't use aux for solution (so it's like two unknowns test as
+    // above), but does check that array indices in solutions are
+    // correct after adding a call to add_aux_equations().
+    #[test]
+    fn solve_via_aux_case_1() {
+
+        // system with two unknown message blocks (0, 1) and one aux
+        let mut d = Decoder::new(2,1);
+
+        // first, add auxiliary mapping (aux -*-> msg)
+        let aux_map = AuxMapping { aux_to_mblocks : vec![vec![0]] };
+        d.add_aux_equations(&aux_map);
+
+        // Test that system is set up as expected. We shouldn't need
+        // to repeat this part of the testing for other cases.
+
+        match &d.variables[0] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0 + msg0
+                match &d.equations[0] {
+                    EquationType::Unsolved(hash, vec) => {
+                        assert_eq!(hash.len(), 2);
+                        assert!(hash.contains(&0)); // msg0
+                        assert!(hash.contains(&2)); // aux0
+                    },
+                    _ => { panic!("aux0 equation wrongly set as solved")
+                    }
+                }
+            },
+            _ => { panic!("msg0 wrongly set as solved") }
+        }
+        match &d.variables[1] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 0);
+            },
+            _ => { panic!("msg1 wrongly set as solved") }
+        }
+        match &d.variables[2] {
+            VariableType::Unsolved(hash) => {
+                assert_eq!(hash.len(), 1);
+                assert!(hash.contains(&0)); // eq0 = aux0
+            },
+            _ => { panic!("aux0 wrongly set as solved") }
+        }
+
+        let (done,pending,solved)
+            = d.add_check_equation(vec![0usize,1], false);
+
+        assert_eq!(done, false); // nothing solved
+        assert_eq!(pending, 0); // cascade didn't solve extra
+        assert!(solved.is_none()); // None instead of Some(Vec)
+
+    }
+
     
 }
