@@ -77,10 +77,10 @@ pub fn floyd_usize(rng : &mut impl Rng, k : usize, n : usize)
 
 	let t : usize = rng.gen_range(r_range);
 	if set.contains(&t) {
-	    println!(" {} is already in set! Adding {} instead.", t, j - 1);
+	    // println!(" {} is already in set! Adding {} instead.", t, j - 1);
 	    set.insert(j - 1);
 	} else {
-	    println!(" {} not in set! Adding it.", t);
+	    // println!(" {} not in set! Adding it.", t);
 	    set.insert(t);
 	}
     }

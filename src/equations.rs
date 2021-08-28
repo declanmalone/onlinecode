@@ -220,6 +220,8 @@ impl Decoder {
 
     fn add_aux_equations(&mut self, map : &AuxMapping) {
 
+        eprintln!("Decoder adding {} aux blocks", map.aux_to_mblocks.len());
+
         for (ablock, list) in map.aux_to_mblocks.iter().enumerate() {
 
             // let mut equation = Equation { }
@@ -264,13 +266,17 @@ impl Decoder {
         // equation
         let equation = self.new_equation(coblocks);
 
-        if equation.is_none() { return (false, self.stack.len(), None) }
+        if equation.is_none() {
+            eprintln!("add_check_equation classified as None");
+            return (false, self.stack.len(), None)
+        }
 
         let equation = equation.unwrap();
 
         match equation {
             EquationType::Solved(var,_) => {
                 // insert as newly-solved
+                eprintln!("add_check_equation classified as Solved");
                 let eq_position = self.equations.len();
                 self.equations.push(equation);
                 self.variables[var].insert(eq_position);
@@ -287,6 +293,7 @@ impl Decoder {
             },
             EquationType::Unsolved(ref hash,_) => {
                 // insert as unsolved equation
+                eprintln!("add_check_equation classified as Unsolved");
                 let eq_position = self.equations.len();
 
                 // link unsolved variables to new equation
@@ -502,13 +509,12 @@ impl Decoder {
                 VariableType::Solved(_)   => {},
                 VariableType::Unsolved(_) => {
                     count_unsolved += 1;
-                    if count_unsolved > 1 { break }
+                    // if count_unsolved > 1 { break }
                 }
             }
         }
 
         match count_unsolved {
-
             0 => { return None },
             1 => {
                 let mut single_unsolved = 0;
@@ -537,7 +543,6 @@ impl Decoder {
                             lhs.insert(*var);
                         }
                     }
-                    
                 }
                 return Some(EquationType::Unsolved(lhs,rhs))
             }
@@ -578,14 +583,14 @@ impl Decoder {
                 match &self.equations[eq_id] {
                     EquationType::Solved(lhs,rhs) => {
                         debug_assert_eq!(*lhs, var); // internal error
-                        let mut vec = Vec::new();
+                        // let mut vec = Vec::new();
                         if eq_id >= self.ablocks {
                             // variable solved by check block
                             // vec.push(eq_id - self.ablocks);
                             initial = Some(eq_id - self.ablocks);
                         }
-                        vec.extend(rhs.to_vec());
-                        Some((initial, vec))
+                        // vec.extend(rhs.to_vec());
+                        Some((initial, rhs.to_vec()))
                     },
                     _ => {
                         // caller error
@@ -1066,6 +1071,7 @@ mod test_decoder {
         vec
     }
 
+    #[test]
     fn test_toy_codec() {
 
         let mblocks = 75;
@@ -1090,7 +1096,7 @@ mod test_decoder {
         for aux_list in aux_mapping.iter() {
             let mut sum = 0usize;
             for mblock in aux_list {
-                sum ^= mblock;
+                sum ^= message[*mblock];
             }
             message.push(sum);
         }
@@ -1111,29 +1117,57 @@ mod test_decoder {
                 check_val ^= message[*index]
             }
 
+            eprintln!("Check block {} comprising: {:?}, value {}",
+                      check_blocks.len(), check_vec,  check_val);
+
             check_blocks.push(check_val);
 
             let (done, pending, solved) =
                 d.add_check_equation(check_vec, false);
 
-            if solved.is_none() { continue }
+            if solved.is_none() {
+                // this seems to be the fix for the bug...
+                check_blocks.pop();
+                continue
+            }
 
             let solved = solved.unwrap();
 
             for var in solved.iter() {
+                // the first, optional part of return is a check block
                 let (chk, vars) = d.var_solution(*var).unwrap();
+
+                eprintln!("Checking solution for var {}: ({:?},{:?})",
+                          *var, chk, vars);
+
                 let mut sum = match chk {
                     None => 0,
-                    Some(x) => x
+                    Some(x) => {
+                        let value = check_blocks[x];
+                        eprintln!("Check {} value is {}", x, value);
+                        value
+                    }
                 };
 
-                for var in vars.iter() {
-                    // damn... these are not check blocks only the
-                    // first one is. I have to rewrite var_solution
-                    sum ^= *var;
+                // the remaining values are variables
+                for v in vars.iter() {
+                    // make sure the variables were already solved
+                    assert_eq!(solvedp[*v], true);
+                    // that being the case, and because we check each
+                    // new var result (below), this is allowed: (in
+                    // practice, decoder will have its own structure)
+                    eprintln!("adding message {} value {}",
+                              *v, message[*v]);
+                    sum ^= message[*v];
                 }
 
-                // 
+                eprintln!("Solving var {}", *var);
+
+                // mark var as solved
+                solvedp[*var] = true;
+
+                // compare result to original
+                assert_eq!(sum, message[*var]);
             }
 
         }
