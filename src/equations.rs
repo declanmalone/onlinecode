@@ -6,6 +6,7 @@
 
 
 use std::collections::{HashSet,HashMap};
+use std::collections::VecDeque;
 
 use crate::compat::*;
 
@@ -166,7 +167,7 @@ pub struct Decoder {
 
     // maintain a list of variables that need visiting when an
     // equation becomes solved
-    stack : Vec<VarID>,
+    stack : VecDeque<VarID>,
 
     // count only unsolved mblocks? That makes sense.
     count_unsolveds : usize,
@@ -213,7 +214,7 @@ impl Decoder {
             mblocks, ablocks, coblocks, variables, equations,
             count_unsolveds,
             done : false,
-            stack : Vec::with_capacity(40)
+            stack : VecDeque::with_capacity(40)
         }
     }
 
@@ -282,7 +283,7 @@ impl Decoder {
                 self.variables[var].insert(eq_position);
 
                 // search graph starting from newly solved variable
-                self.stack.push(var);
+                self.stack.push_back(var);
 
                 // At this point, we've added a solved *equation*, and
                 // linked the newly-solved variable to it. What
@@ -332,7 +333,7 @@ impl Decoder {
         // return list of newly-solved variables
         let mut newly_solved = Vec::<VarID>::new();
 
-        while let Some(var) = self.stack.pop() {
+        while let Some(var) = self.stack.pop_front() {
 
             // var is always a solved variable at this point
             newly_solved.push(var);
@@ -383,7 +384,7 @@ impl Decoder {
                                     other = vars.next().unwrap()
                                 }
                                 rhs.push(var);
-                                self.stack.push(*other);
+                                self.stack.push_back(*other);
                                 // the contentious bit (I think to_vec() copies)
                                 self.equations[*eq_id] =
                                     EquationType::Solved(*other,rhs.to_vec());
