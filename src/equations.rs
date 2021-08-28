@@ -267,7 +267,7 @@ impl Decoder {
         let equation = self.new_equation(coblocks);
 
         if equation.is_none() {
-            eprintln!("add_check_equation classified as None");
+            // eprintln!("add_check_equation classified as None");
             return (false, self.stack.len(), None)
         }
 
@@ -276,7 +276,7 @@ impl Decoder {
         match equation {
             EquationType::Solved(var,_) => {
                 // insert as newly-solved
-                eprintln!("add_check_equation classified as Solved");
+                // eprintln!("add_check_equation classified as Solved");
                 let eq_position = self.equations.len();
                 self.equations.push(equation);
                 self.variables[var].insert(eq_position);
@@ -293,7 +293,7 @@ impl Decoder {
             },
             EquationType::Unsolved(ref hash,_) => {
                 // insert as unsolved equation
-                eprintln!("add_check_equation classified as Unsolved");
+                // eprintln!("add_check_equation classified as Unsolved");
                 let eq_position = self.equations.len();
 
                 // link unsolved variables to new equation
@@ -348,7 +348,8 @@ impl Decoder {
                 match &mut self.equations[*eq_id] {
 
                     EquationType::Solved(v,rhs) => {
-                        debug_assert_eq!(*v, var);
+                        assert_eq!(*v, var);
+                        eprintln!("var {} solved by equation {}",*v,*eq_id);
                         found_solved += 1;
                         solved_equation = *eq_id;
                     },
@@ -1117,8 +1118,8 @@ mod test_decoder {
                 check_val ^= message[*index]
             }
 
-            eprintln!("Check block {} comprising: {:?}, value {}",
-                      check_blocks.len(), check_vec,  check_val);
+            // eprintln!("Check block {} comprising: {:?}, value {}",
+            //           check_blocks.len(), check_vec,  check_val);
 
             // sender and receiver can end up disagreeing on what the
             // current check block number is if the receiver drops the
@@ -1133,7 +1134,7 @@ mod test_decoder {
                 }
             }
             if useless {
-                eprintln!("Not storing a useless block");
+                // eprintln!("Not storing a useless block");
                 continue
             } else {
                 check_blocks.push(check_val);
@@ -1161,7 +1162,7 @@ mod test_decoder {
                     None => 0,
                     Some(x) => {
                         let value = check_blocks[x];
-                        eprintln!("Check {} value is {}", x, value);
+                        // eprintln!("Check {} value is {}", x, value);
                         value
                     }
                 };
@@ -1173,8 +1174,9 @@ mod test_decoder {
                     // that being the case, and because we check each
                     // new var result (below), this is allowed: (in
                     // practice, decoder will have its own structure)
-                    eprintln!("adding message {} value {}",
-                              *v, message[*v]);
+
+                    // eprintln!("adding message {} value {}",
+                    //           *v, message[*v]);
                     sum ^= message[*v];
                 }
 
