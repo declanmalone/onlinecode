@@ -104,6 +104,7 @@ pub struct Variable {
 // Auxiliary blocks are encoded as the first `ablocks` equations
 // entered into the system, but as the last `ablocks` *variables*.
 
+#[derive(Debug)]
 pub enum EquationType {
     // dropping AlreadySolved in favour of using Option<T>
     // AlreadySolved,
@@ -298,7 +299,7 @@ impl Decoder {
                 let eq_position = self.equations.len();
 
                 // link unsolved variables to new equation
-                for var in equation.iter() { 
+                for var in equation.iter() {
                     self.variables[*var].insert(eq_position);
                 }
 
@@ -335,6 +336,11 @@ impl Decoder {
 
         while let Some(var) = self.stack.pop_front() {
 
+            if let VariableType::Solved(_) = self.variables[var] {
+                continue;
+                //panic!("variable {} already marked as solved",var)
+            }
+            
             // var is always a solved variable at this point
             newly_solved.push(var);
 
@@ -345,12 +351,16 @@ impl Decoder {
             let mut found_solved = 0;
             let mut solved_equation = 0;
 
+            eprintln!("Propagating solved variable {} into equations", var);
+
             for eq_id in self.variables[var].iter() {
+                eprintln!("Propagating into eq {}: {:?}",
+                          *eq_id, self.equations[*eq_id]);
                 match &mut self.equations[*eq_id] {
 
                     EquationType::Solved(v,rhs) => {
                         assert_eq!(*v, var);
-                        eprintln!("var {} solved by equation {}",*v,*eq_id);
+                        eprintln!("var {} solved by equation {}",var,*eq_id);
                         found_solved += 1;
                         solved_equation = *eq_id;
                     },
@@ -383,6 +393,8 @@ impl Decoder {
                                 if *other == var {
                                     other = vars.next().unwrap()
                                 }
+                                eprintln!("Eq {} had {},{} on lhs",
+                                          eq_id, var, other);
                                 rhs.push(var);
                                 self.stack.push_back(*other);
                                 // the contentious bit (I think to_vec() copies)
@@ -397,6 +409,7 @@ impl Decoder {
                                 panic!("Internal Error: Unsolved eq {} wrong",
                                        eq_id);
                             },
+                            0 => { panic!("Equation had no lhs"); },
                             _ => { 
                                 hash.remove(&var);
                                 rhs.push(var);
@@ -404,14 +417,16 @@ impl Decoder {
                         };
                     }
                 }
+                eprintln!("After propagating var {} into eq {}: {:?}",
+                          var, *eq_id, self.equations[*eq_id]);
 
             } // for eq_id in self.variables.iter()
 
             // variable also need to be marked as solved ...
-            debug_assert_eq!(found_solved, 1);
+            // debug_assert_eq!(found_solved, 1);
             match &self.variables[var] {
                 VariableType::Solved(_eq_id) => {
-                    panic!("Internal error: var {} was solved twice", var);
+                   // panic!("Internal error: var {} was solved twice", var);
                 },
                 VariableType::Unsolved(_hash) => {
                     self.variables[var] = VariableType::Solved(solved_equation)
@@ -1076,9 +1091,9 @@ mod test_decoder {
     #[test]
     fn test_toy_codec() {
 
-        let mblocks = 75;
+        let mblocks = 100;
         let ablocks = 25;
-        let m_per_a = 6;
+        let m_per_a = 5;
         let max_picks = 8;      // max blocks to put in check block
 
         // coding side
@@ -1119,8 +1134,8 @@ mod test_decoder {
                 check_val ^= message[*index]
             }
 
-            // eprintln!("Check block {} comprising: {:?}, value {}",
-            //           check_blocks.len(), check_vec,  check_val);
+            eprintln!("Check block {} comprising: {:?}, value {}",
+                      check_blocks.len(), check_vec,  check_val);
 
             // sender and receiver can end up disagreeing on what the
             // current check block number is if the receiver drops the
@@ -1181,10 +1196,15 @@ mod test_decoder {
                     sum ^= message[*v];
                 }
 
-                eprintln!("Solving var {}", *var);
+                eprintln!("Solving var {} ({} remain unsolved)",
+                          *var, d.count_unsolveds);
 
                 // mark var as solved
-                solvedp[*var] = true;
+                if solvedp[*var] {
+                    panic!("Var {} was already marked as solved", *var);
+                } else {
+                    solvedp[*var] = true;
+                }
 
                 // compare result to original
                 assert_eq!(sum, message[*var]);
