@@ -7,7 +7,7 @@ use rand::rngs::StdRng;
 use std::collections::HashSet;
 
 // use higest-precision floats available
-fn init_rand_table(codec : &CodeSettings) -> Result<Vec<f64>,&'static str> {
+pub fn init_rand_table(codec : &CodeSettings) -> Result<Vec<f64>,&'static str> {
 
     let coblocks : usize = codec.coblocks;
     let epsilon  : f64   = codec.e;
@@ -66,7 +66,7 @@ fn init_rand_table(codec : &CodeSettings) -> Result<Vec<f64>,&'static str> {
 
 /// Take table initialised above and use it to find how many blocks
 /// (ie, the "degree") to include in a check block.
-fn random_degree(codec : &CodeSettings, rng : &mut impl Rng) -> usize {
+pub fn random_degree(codec : &CodeSettings, rng : &mut impl Rng) -> usize {
     let mut degree : usize = 0;
     let r : f64 = rng.gen();	// [0,1)
     while r > codec.p[degree] {
@@ -75,12 +75,12 @@ fn random_degree(codec : &CodeSettings, rng : &mut impl Rng) -> usize {
     degree + 1
 }
 
-fn max_degree(mut e : f64) -> usize {
+pub fn max_degree(mut e : f64) -> usize {
     e /= 2.0;
     (2.0 * (e.ln() / (e - 1.0).ln())).ceil() as usize
 }
 
-fn count_aux(mblocks : usize, q : usize, e : f64) -> usize {
+pub fn count_aux(mblocks : usize, q : usize, e : f64) -> usize {
     let aux_blocks = (0.55 * e * (q * mblocks) as f64) as usize;
     if aux_blocks < q { q } else { aux_blocks }
 }
@@ -89,7 +89,7 @@ fn eval_f(t : f64) -> usize {
     max_degree(1.0 / (1.0 + (-t).exp()))
 }
 
-fn recalculate_e(mblocks : usize, q : usize, e : f64) -> f64 {
+pub fn recalculate_e(mblocks : usize, q : usize, e : f64) -> f64 {
 
     let ablocks = count_aux(mblocks, q, e);
     let coblocks = mblocks + ablocks;
