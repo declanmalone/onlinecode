@@ -24,6 +24,7 @@ use rand::{Rng, SeedableRng};
 use onlinecode::*;
 use onlinecode::rng::*;
 use onlinecode::compat::*;
+use onlinecode::floyd::*;
 use onlinecode::probdist::*;
 use onlinecode::equations::*;
 
@@ -35,7 +36,7 @@ use onlinecode::equations::*;
 
 fn sample_file(mblocks : usize) -> Vec<u32> {
     let mut vec = Vec::with_capacity(mblocks + mblocks / 5);
-    for b in 1..mblocks + 1 {
+    for b in 0..mblocks  {
         vec.push(b as u32)
     }
     vec
@@ -59,7 +60,7 @@ fn main() {
         .get_matches();
 
     // set up variables from args or default
-    let e : f64 = if let Some(num) = matches.value_of("e") {
+    let mut e : f64 = if let Some(num) = matches.value_of("e") {
         num.parse().expect("Invalid value for -e option")
     } else {
         0.01
@@ -90,17 +91,25 @@ fn main() {
     let mut starting_seed = [0u8; 20];
     let mut seed_opts = 0;
 
+    // use Rust's RNG to generate random seeds (both for -r option and
+    // when creating check blocks later)
+    let mut rust_rng = rand::thread_rng();
+
     if matches.is_present("n") {
         // no need to init
+        eprintln!("Using null seed");
         seed_opts += 1;
     }
     
     if matches.is_present("r") {
-        // TODO: randomly select a new 20-byte seed
+        eprintln!("Using random seed");
+        let random_bytes = rust_rng.gen::<[u8; 20]>();
+        starting_seed.copy_from_slice(&random_bytes);
         seed_opts += 1;
     }
 
     if let Some(string) = matches.value_of("s") {
+        eprintln!("Using supplied seed {}", string);
         seed_opts += 1;
         // pass supplied string through SHA1 to get actual seed
         // (less error checking required)
@@ -188,7 +197,7 @@ fn main() {
     // auxiliary mapping twice, we can do it once and have both
     // encoder/decoder side share the generated mapping.
 
-    let aux_rng = SHA1Rng::from_seed(starting_seed);
+    let mut aux_rng = SHA1Rng::from_seed(starting_seed);
     let aux_map = AuxMapping::new(&mut aux_rng, mblocks, ablocks, q);
 
     // xor the aux blocks together based on the mapping and append
@@ -211,7 +220,7 @@ fn main() {
     
     let p = Vec::<f64>::new();
     // TODO: I should also add q to the struct
-    let settings = CodeSettings {
+    let mut settings = CodeSettings {
         e, f, mblocks,
         coblocks : mblocks + ablocks,
         p
@@ -220,6 +229,7 @@ fn main() {
     // TODO: turn this into a method of CodeSettings?
     let new_p = init_rand_table(&settings).unwrap();
     settings.p = new_p;
+    eprintln!("p table is {:?}", settings.p);
 
     // decoding side
     let mut d = Decoder::new(mblocks, ablocks);
@@ -227,6 +237,7 @@ fn main() {
 
     // validate ordering of solutions
     let mut solvedp = vec![false ; mblocks + ablocks];
+
 
     while !d.done {
 
@@ -240,11 +251,29 @@ fn main() {
         //   blocks (we use Floyd's algorithm)
 
         // I don't seem to have a support routine to generate a random
-        // 20-byte seed, 
+        // 20-byte seed, so I'll implement it here for now...
+        let mut chk_rng = SHA1Rng::from_seed(rust_rng.gen::<[u8; 20]>());
 
+        // use the probability distribution table 
+        let picks = random_degree(&settings, &mut chk_rng);
+        // eprintln!("picks is {}", picks);
+
+        // I'm missing an equivalent to generate_check_block() that I
+        // used in the unit test code, so I'll inline it here and will
+        // refactor it out later.
+
+        // let check_vec = hashset_to_vec(
+        //     &generate_check_block(picks, mblocks + ablocks));
+
+        // Note: reuse chk_rng to make picks deterministic. This
+        // doesn't matter here, but it would in sender/receiver setup
+        let check_vec =
+            floyd_usize(&mut chk_rng, picks, mblocks + ablocks)
+            .iter().cloned().collect::<Vec<_>>();
+        // eprintln!("check_vec = {:?}", check_vec);
+
+        // end of changes
         
-        let check_vec = hashset_to_vec(
-            &generate_check_block(max_picks, mblocks + ablocks));
         let mut check_val = 0;
         for index in check_vec.iter() {
             check_val ^= message[*index]

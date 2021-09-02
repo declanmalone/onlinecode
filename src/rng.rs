@@ -55,6 +55,7 @@ use rand_core::{RngCore, Error, impls};
 
 use sha1::{Sha1, Digest};
 
+// #[derive(Debug,Copy,Clone)]
 pub struct SHA1Rng {
 
 //    state : <SHA1Rng as rand::SeedableRng>::Seed,
