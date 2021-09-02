@@ -17,7 +17,7 @@ pub struct AuxMapping {
 
 impl AuxMapping {
     // q : Each message block attaches to q auxiliary blocks
-    fn new(rng : &mut impl Rng, mblocks : usize, ablocks : usize, q : usize)
+    pub fn new(rng : &mut impl Rng, mblocks : usize, ablocks : usize, q : usize)
     -> Self {
 	// outer vector
 	let mut aux_to_mblocks = Vec::with_capacity(ablocks);

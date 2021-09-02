@@ -17,14 +17,14 @@ pub mod equations;
 pub mod compat;
 
 // 
-struct CodeSettings {
-    e : f64,			// epsilon
-    f : usize,
+pub struct CodeSettings {
+    pub e : f64,			// epsilon
+    pub f : usize,
 
-    mblocks  : usize,
-    coblocks : usize,
+    pub mblocks  : usize,
+    pub coblocks : usize,
 
-    p : Vec<f64>,
+    pub p : Vec<f64>,
 }
 
 // Difference between solving a message block and an aux block if only
