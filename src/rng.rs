@@ -141,7 +141,7 @@ impl RngCore for SHA1Rng {
 	    let array = [self.state[p], self.state[p+1],
 			 self.state[p+2], self.state[p+3]];
 	    val = u32::from_le_bytes(array);
-            eprintln!("RNG returning val {}", val);
+            // eprintln!("RNG returning val {}", val);
 	    // half way towards making compatible with C/Perl versions
 	    if val != 0xffffffff { return val }
 	}

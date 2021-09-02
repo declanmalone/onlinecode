@@ -409,8 +409,15 @@ impl Decoder {
                                 // unsolved equation with a single
                                 // unknown should have been replaced
                                 // with a solved variant.
-                                panic!("Internal Error: Unsolved eq {} wrong",
-                                       eq_id);
+
+                                // Actually, it can happen if this is
+                                // an aux block that didn't get linked
+                                // to any message blocks, so refine
+                                // the test:
+                                if (*eq_id >= self.ablocks) {
+                                    panic!("Internal Error: Unsolved eq {} wrong",
+                                           eq_id);
+                                }
                             },
                             0 => { panic!("Equation had no lhs"); },
                             _ => { 
