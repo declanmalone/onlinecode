@@ -13,6 +13,7 @@ license = "GPL-2.0-or-later OR LGPL-2.0-or-later"
 [dependencies]
 digest = "0.9.0"
 sha-1 = "0.9.6"
+"clap" = "2.33.3"
 
 rand = "0.8.4"
 rand_core = "0.6.3"
