@@ -34,7 +34,7 @@ pub fn init_rand_table(codec : &CodeSettings) -> Result<Vec<f64>,&'static str> {
     let mut p = Vec::<f64>::with_capacity(codec.f);
 
     let p1 : f64 = 1.0 - (1.0 + 1.0/f) / (1.0 + epsilon);
-    // assert!(p1 > 0.0); // epsilon crazy big?
+    assert!(p1 > 0.0); // epsilon crazy big?
 
     // simple (if unrealistic) case of f=1 or f=2
     if codec.f == 1 {

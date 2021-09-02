@@ -80,6 +80,11 @@ fn main() {
 
     let mblocks : usize = matches.value_of("m").unwrap().parse().unwrap();
 
+    // check the above code
+    eprintln!("Options:\ne: {}, q: {}, mblocks: {}, E: {}",
+              e, q, mblocks, big_e);
+
+
     // The -n, -r, and -s options are mutually-exclusive
 
     // Is there a way to make the last instance be the winner using
@@ -122,12 +127,9 @@ fn main() {
         eprintln!("The -n, -r and -s options are mutually exclusive");
         return;
     }
-
-    // check the above code
-    eprintln!("Options:\ne: {}, q: {}, mblocks: {}, E: {}",
-              e, q, mblocks, big_e);
-
-
+    
+    // rng created below
+    
     // code copied from equations.rs
 
     // coding side
@@ -267,9 +269,10 @@ fn main() {
 
         // Note: reuse chk_rng to make picks deterministic. This
         // doesn't matter here, but it would in sender/receiver setup
-        let check_vec =
-            floyd_usize(&mut chk_rng, picks, mblocks + ablocks)
-            .iter().cloned().collect::<Vec<_>>();
+        let hashset = floyd_usize(&mut chk_rng, picks, mblocks + ablocks);
+        eprintln!("hashset = {:?}", hashset);
+        let check_vec = hashset.iter().cloned().collect::<Vec<_>>();
+
         // eprintln!("check_vec = {:?}", check_vec);
 
         // end of changes
