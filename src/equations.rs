@@ -42,6 +42,8 @@ use crate::compat::*;
 type EqID = usize;
 type VarID = usize;
 
+/*
+
 pub struct Equation {
     // As more variables become solved (case 2 above), they can be
     // substituted into other equations, so values (variable ids) will
@@ -63,6 +65,7 @@ pub struct Equation {
 pub struct Variable {
     pub equations : HashSet<EqID>,
 }
+ */
 
 // Further note on variable, equation and block IDs... 
 //
@@ -156,9 +159,9 @@ impl VariableType {
 }
 
 pub struct Decoder {
-    mblocks : usize,		// message blocks
-    ablocks : usize,		// auxiliary blocks
-    coblocks: usize,		// mblocks + ablocks
+    pub mblocks : usize,	// message blocks
+    pub ablocks : usize,        // auxiliary blocks
+    pub coblocks: usize,        // mblocks + ablocks
 
     // These two arrays effectively implement the bipartite graph
     // logic. Both types come in solved and unsolved flavours.
@@ -168,11 +171,11 @@ pub struct Decoder {
 
     // maintain a list of variables that need visiting when an
     // equation becomes solved
-    stack : VecDeque<VarID>,
+    pub stack : VecDeque<VarID>,
 
     // count only unsolved mblocks? That makes sense.
-    count_unsolveds : usize,
-    done : bool,
+    pub count_unsolveds : usize,
+    pub done : bool,
 }
 
 // to-do
@@ -190,7 +193,7 @@ pub struct Decoder {
 
 impl Decoder {
 
-    fn new(mblocks : usize, ablocks : usize) -> Self {
+    pub fn new(mblocks : usize, ablocks : usize) -> Self {
 
         // variables table is fixed size
         let coblocks = mblocks + ablocks;
@@ -220,7 +223,7 @@ impl Decoder {
     }
 
 
-    fn add_aux_equations(&mut self, map : &AuxMapping) {
+    pub fn add_aux_equations(&mut self, map : &AuxMapping) {
 
         eprintln!("Decoder adding {} aux blocks", map.aux_to_mblocks.len());
 
@@ -251,7 +254,7 @@ impl Decoder {
 
 
     /// Add check block to graph. 
-    fn add_check_equation(&mut self,
+    pub fn add_check_equation(&mut self,
                           coblocks : Vec<VarID>, step : bool)
                           -> (bool, usize, Option<Vec<VarID>>) {
 
@@ -328,7 +331,7 @@ impl Decoder {
     // This should work equally well for solved message blocks and
     // auxiliary blocks.
 
-    fn cascade(&mut self, stepping : bool)
+    pub fn cascade(&mut self, stepping : bool)
                -> (bool, usize, Option<Vec<VarID>>) {
 
         // return list of newly-solved variables
@@ -513,7 +516,7 @@ impl Decoder {
     // decide whether to drop a new check block. For that reason, I
     // think I should return Option<EquationType> here instead
     
-    fn new_equation(&self, vars : Vec<VarID>) -> Option<EquationType> {
+    pub fn new_equation(&self, vars : Vec<VarID>) -> Option<EquationType> {
 
         // Use two passes. First determine how many unsolved vars
         // there are. Then, depending on whether it's 0, 1 or more
@@ -567,7 +570,7 @@ impl Decoder {
         
     }
 
-    fn var_solution(&self, var : VarID)
+    pub fn var_solution(&self, var : VarID)
                     -> Option<(Option<usize>, Vec<EqID>)> {
 
         // actually ... we don't need initial, do we? Isn't the
