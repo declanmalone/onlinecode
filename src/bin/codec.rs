@@ -231,7 +231,7 @@ fn main() {
     // TODO: turn this into a method of CodeSettings?
     let new_p = init_rand_table(&settings).unwrap();
     settings.p = new_p;
-    eprintln!("p table is {:?}", settings.p);
+    // eprintln!("p table is {:?}", settings.p);
 
     // decoding side
     let mut d = Decoder::new(mblocks, ablocks);
@@ -270,7 +270,7 @@ fn main() {
         // Note: reuse chk_rng to make picks deterministic. This
         // doesn't matter here, but it would in sender/receiver setup
         let hashset = floyd_usize(&mut chk_rng, picks, mblocks + ablocks);
-        eprintln!("hashset = {:?}", hashset);
+        // eprintln!("hashset = {:?}", hashset);
         let check_vec = hashset.iter().cloned().collect::<Vec<_>>();
 
         // eprintln!("check_vec = {:?}", check_vec);
@@ -282,8 +282,8 @@ fn main() {
             check_val ^= message[*index]
         }
 
-        eprintln!("Check block {} comprising: {:?}, value {}",
-                  check_blocks.len(), check_vec,  check_val);
+        // eprintln!("Check block {} comprising: {:?}, value {}",
+        //           check_blocks.len(), check_vec,  check_val);
 
         // sender and receiver can end up disagreeing on what the
         // current check block number is if the receiver drops the
@@ -319,8 +319,8 @@ fn main() {
             // the first, optional part of return is a check block
             let (chk, vars) = d.var_solution(*var).unwrap();
 
-            eprintln!("Checking solution for var {}: ({:?},{:?})",
-                      *var, chk, vars);
+            // eprintln!("Checking solution for var {}: ({:?},{:?})",
+            //           *var, chk, vars);
 
             let mut sum = match chk {
                 None => 0,
@@ -344,8 +344,8 @@ fn main() {
                 sum ^= message[*v];
             }
 
-            eprintln!("Solving var {} ({} remain unsolved)",
-                      *var, d.count_unsolveds);
+            // eprintln!("Solving var {} ({} remain unsolved)",
+            //           *var, d.count_unsolveds);
 
             // mark var as solved
             if solvedp[*var] {

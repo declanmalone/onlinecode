@@ -354,16 +354,16 @@ impl Decoder {
             let mut found_solved = 0;
             let mut solved_equation = 0;
 
-            eprintln!("Propagating solved variable {} into equations", var);
+            // eprintln!("Propagating solved variable {} into equations", var);
 
             for eq_id in self.variables[var].iter() {
-                eprintln!("Propagating into eq {}: {:?}",
-                          *eq_id, self.equations[*eq_id]);
+                // eprintln!("Propagating into eq {}: {:?}",
+                // *eq_id, self.equations[*eq_id]);
                 match &mut self.equations[*eq_id] {
 
                     EquationType::Solved(v,rhs) => {
                         assert_eq!(*v, var);
-                        eprintln!("var {} solved by equation {}",var,*eq_id);
+                        // eprintln!("var {} solved by equation {}",var,*eq_id);
                         found_solved += 1;
                         solved_equation = *eq_id;
                     },
@@ -396,8 +396,8 @@ impl Decoder {
                                 if *other == var {
                                     other = vars.next().unwrap()
                                 }
-                                eprintln!("Eq {} had {},{} on lhs",
-                                          eq_id, var, other);
+                                // eprintln!("Eq {} had {},{} on lhs",
+                                //           eq_id, var, other);
                                 rhs.push(var);
                                 self.stack.push_back(*other);
                                 // the contentious bit (I think to_vec() copies)
@@ -427,8 +427,8 @@ impl Decoder {
                         };
                     }
                 }
-                eprintln!("After propagating var {} into eq {}: {:?}",
-                          var, *eq_id, self.equations[*eq_id]);
+                // eprintln!("After propagating var {} into eq {}: {:?}",
+                //           var, *eq_id, self.equations[*eq_id]);
 
             } // for eq_id in self.variables.iter()
 
@@ -1144,8 +1144,8 @@ mod test_decoder {
                 check_val ^= message[*index]
             }
 
-            eprintln!("Check block {} comprising: {:?}, value {}",
-                      check_blocks.len(), check_vec,  check_val);
+            // eprintln!("Check block {} comprising: {:?}, value {}",
+            //           check_blocks.len(), check_vec,  check_val);
 
             // sender and receiver can end up disagreeing on what the
             // current check block number is if the receiver drops the
@@ -1181,8 +1181,8 @@ mod test_decoder {
                 // the first, optional part of return is a check block
                 let (chk, vars) = d.var_solution(*var).unwrap();
 
-                eprintln!("Checking solution for var {}: ({:?},{:?})",
-                          *var, chk, vars);
+                // eprintln!("Checking solution for var {}: ({:?},{:?})",
+                //           *var, chk, vars);
 
                 let mut sum = match chk {
                     None => 0,
@@ -1206,8 +1206,8 @@ mod test_decoder {
                     sum ^= message[*v];
                 }
 
-                eprintln!("Solving var {} ({} remain unsolved)",
-                          *var, d.count_unsolveds);
+                // eprintln!("Solving var {} ({} remain unsolved)",
+                //           *var, d.count_unsolveds);
 
                 // mark var as solved
                 if solvedp[*var] {
