@@ -141,13 +141,19 @@ impl RngCore for SHA1Rng {
 	    let array = [self.state[p], self.state[p+1],
 			 self.state[p+2], self.state[p+3]];
 	    val = u32::from_le_bytes(array);
+            eprintln!("RNG returning val {}", val);
 	    // half way towards making compatible with C/Perl versions
 	    if val != 0xffffffff { return val }
 	}
     }
 
     fn next_u64(&mut self) -> u64 {
-        self.next_u32() as u64
+        impls::next_u64_via_u32(self)
+        // ah... the following ends up returning 0 when calling
+        // gen_range(), no doubt due to it looking at the high bytes
+        // or something stupid like that.
+        //
+        // self.next_u32() as u64
     }
 
     fn fill_bytes(&mut self, dest: &mut [u8]) {
@@ -155,9 +161,7 @@ impl RngCore for SHA1Rng {
     }
 
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Error> {
-        self.fill_bytes(dest);
-	Ok(())
-	    
+	Ok(self.fill_bytes(dest))
     }
 }
 
