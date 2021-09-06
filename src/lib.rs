@@ -1,7 +1,6 @@
 //! # Implement Online Codes, a type of fountain code
 //!
 
-
 pub mod probdist;
 pub mod rng;
 pub mod floyd;

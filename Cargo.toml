@@ -1,6 +1,6 @@
 [package]
 name = "onlinecode"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 description = "An implementation of \"Online Codes\", a type of Fountain Code"
 homepage = "https://github.com/declanmalone/onlinecode"

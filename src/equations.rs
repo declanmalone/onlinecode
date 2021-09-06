@@ -222,7 +222,6 @@ impl Decoder {
         }
     }
 
-
     pub fn add_aux_equations(&mut self, map : &AuxMapping) {
 
         eprintln!("Decoder adding {} aux blocks", map.aux_to_mblocks.len());

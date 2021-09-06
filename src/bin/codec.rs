@@ -14,7 +14,9 @@
 // being a u32 value. For sending and receiving files, larger blocks
 // would be used.
 //
-// 
+
+// Add this to allow (done,_pending, solved) = ... (no `let`)
+#![feature(destructuring_assignment)]
 
 use clap::{Arg, App};
 use sha1::{Sha1, Digest};
@@ -190,7 +192,9 @@ fn main() {
     //   passes to receivers)
     //
     // * combine stream ID and packet (check block) ID when
-    //   calculating lhs of check block equations
+    //   calculating lhs of check block equations (eg, turn check
+    //   block seed into a sequence ID and calculate check block seed
+    //   as hash(stream id + sequence base + sequence ID)
     //
     // * add checksum to protect against transmission errors (TCP and
     //   UDP packets/frames already have this though)
@@ -237,11 +241,15 @@ fn main() {
     let mut d = Decoder::new(mblocks, ablocks);
     d.add_aux_equations(& aux_map );
 
-    // validate ordering of solutions
+    // validate ordering of solutions (new solutions should only refer
+    // to previous solutions)
     let mut solvedp = vec![false ; mblocks + ablocks];
 
+    let mut done = false;
+    let mut _pending = 0;
+    let mut solved;
 
-    while !d.done {
+    while !done {
 
         // The real algorithm needs a fresh randomly-seeded RNG which
         // it uses for:
@@ -251,6 +259,8 @@ fn main() {
         //
         // * picking that many blocks uniformly from message/auxiliary
         //   blocks (we use Floyd's algorithm)
+        //
+        // (sender has to send this seed to receivers)
 
         // I don't seem to have a support routine to generate a random
         // 20-byte seed, so I'll implement it here for now...
@@ -264,6 +274,7 @@ fn main() {
         // used in the unit test code, so I'll inline it here and will
         // refactor it out later.
 
+        // Old code:
         // let check_vec = hashset_to_vec(
         //     &generate_check_block(picks, mblocks + ablocks));
 
@@ -275,7 +286,8 @@ fn main() {
 
         // eprintln!("check_vec = {:?}", check_vec);
 
-        // end of changes
+        // end of changes (nothing after this depends on details of
+        // settings struct or rngs)
         
         let mut check_val = 0;
         for index in check_vec.iter() {
@@ -304,7 +316,7 @@ fn main() {
             check_blocks.push(check_val);
         }
 
-        let (done, pending, solved) =
+        (done, _pending, solved) =
             d.add_check_equation(check_vec, false);
 
         if solved.is_none() {
@@ -313,25 +325,27 @@ fn main() {
             continue
         }
 
+        // solved was Some(value)
         let solved = solved.unwrap();
 
         for var in solved.iter() {
-            // the first, optional part of return is a check block
+
             let (chk, vars) = d.var_solution(*var).unwrap();
 
             // eprintln!("Checking solution for var {}: ({:?},{:?})",
             //           *var, chk, vars);
 
+            // first part encodes an aux/check block solution
             let mut sum = match chk {
-                None => 0,
-                Some(x) => {
+                None => 0,      // aux block => sum <- zero
+                Some(x) => {    // chk block => sum <- check block
                     let value = check_blocks[x];
                     // eprintln!("Check {} value is {}", x, value);
                     value
                 }
             };
 
-            // the remaining values are variables
+            // the remaining values are variables to be xor'ed
             for v in vars.iter() {
                 // make sure the variables were already solved
                 assert_eq!(solvedp[*v], true);
@@ -359,5 +373,7 @@ fn main() {
         }
 
     }
-    
+
+    eprintln!("Successfully decoded after receiving {} check blocks",
+              check_blocks.len());
 }
